@@ -438,6 +438,23 @@ namespace InventorySystem
 
         #endregion
 
+        #region Internal (UI layer access)
+
+        /// <summary>
+        /// Registers an already-grid-placed item into the inventory item list
+        /// without running placement logic. Used by InventoryUI for cross-inventory
+        /// drag-drops where placement is handled externally.
+        /// </summary>
+        internal void AddPlaced(InventoryItem item)
+        {
+            if (item == null || _items.Contains(item)) return;
+            _items.Add(item);
+            item.OnStackChanged += HandleStackChanged;
+            OnItemAdded?.Invoke(item, item.StackCount);
+        }
+
+        #endregion
+
         #region Utility
 
         public override string ToString()

@@ -1,0 +1,142 @@
+// FluidSPH.compute
+#pragma kernel ComputeDensityPressure
+#pragma kernel ComputeForces
+#pragma kernel Integrate
+
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float3 force;
+    float density;
+    float pressure;
+};
+
+// Buffers
+RWStructuredBuffer<Particle> _Particles;
+
+// Parameters
+uint _NumParticles;
+float _Gravity;
+float _ParticleMass;
+float _SmoothingRadius;
+float _TargetDensity;
+float _PressureMultiplier;
+float _Viscosity;
+float _DeltaTime;
+float3 _BoundsSize;
+
+// Precalculated Constants for SPH Kernels
+float _Poly6Constant;
+float _SpikyConstant;
+float _ViscConstant;
+
+#define THREADS 256
+
+[numthreads(THREADS, 1, 1)]
+void ComputeDensityPressure (uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _NumParticles) return;
+
+    float3 pos = _Particles[id.x].position;
+    float density = 0;
+
+    for (uint i = 0; i < _NumParticles; i++)
+    {
+        float3 diff = _Particles[i].position - pos;
+        float rSq = dot(diff, diff);
+        float hSq = _SmoothingRadius * _SmoothingRadius;
+
+        if (rSq < hSq)
+        {
+            float r = sqrt(rSq);
+            // SPH Poly6 Kernel (tính mật độ hạt xung quanh)
+            density += _ParticleMass * _Poly6Constant * pow(hSq - rSq, 3);
+        }
+    }
+
+    // Tránh bị chia cho 0 ở bước sau
+    density = max(density, 0.000001f);
+    
+    _Particles[id.x].density = density;
+    // Phương trình trạng thái Tait (tính áp suất dựa trên mật độ và mật độ mục tiêu)
+    _Particles[id.x].pressure = _PressureMultiplier * (density - _TargetDensity);
+}
+
+[numthreads(THREADS, 1, 1)]
+void ComputeForces (uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _NumParticles) return;
+
+    float3 pos = _Particles[id.x].position;
+    float3 vel = _Particles[id.x].velocity;
+    float density = _Particles[id.x].density;
+    float pressure = _Particles[id.x].pressure;
+
+    float3 pressureForce = float3(0,0,0);
+    float3 viscosityForce = float3(0,0,0);
+
+    for (uint i = 0; i < _NumParticles; i++)
+    {
+        if (i == id.x) continue;
+
+        float3 diff = pos - _Particles[i].position;
+        float r = length(diff);
+
+        // Chỉ tác động khi nằm trong bán kính làm mịn (smoothing radius)
+        if (r < _SmoothingRadius && r > 0.000001f)
+        {
+            float3 dir = diff / r;
+            float pDensity = _Particles[i].density;
+            float pPressure = _Particles[i].pressure;
+
+            // Spiky gradient kernel đo áp suất đẩy ra
+            float sharedPressure = (pressure + pPressure) / 2.0f;
+            pressureForce -= dir * _ParticleMass * sharedPressure / pDensity * _SpikyConstant * pow(_SmoothingRadius - r, 2);
+
+            // Viscosity laplacian kernel đo lực nhớt để hãm vận tốc
+            float3 relVel = _Particles[i].velocity - vel;
+            viscosityForce += _Viscosity * _ParticleMass * relVel / pDensity * _ViscConstant * (_SmoothingRadius - r);
+        }
+    }
+
+    float3 gravityForce = float3(0, -_Gravity * density, 0);
+    _Particles[id.x].force = pressureForce + viscosityForce + gravityForce;
+}
+
+[numthreads(THREADS, 1, 1)]
+void Integrate (uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _NumParticles) return;
+
+    // Lấy thông số hạt
+    float3 pos = _Particles[id.x].position;
+    float3 vel = _Particles[id.x].velocity;
+    float3 force = _Particles[id.x].force;
+    float density = _Particles[id.x].density;
+
+    // F = ma => a = F/m
+    // Tuy nhiên trong cơ học chất lỏng SPH, ta dùng mật độ thay vì khối lượng trực tiếp ở công thức tổng: a = F/density
+    float3 accel = force / density;
+    
+    // Euler Integration (Cập nhật vận tốc và vị trí)
+    vel += accel * _DeltaTime;
+    pos += vel * _DeltaTime;
+
+    // Xử lý va chạm biên (nảy lại)
+    float3 halfBounds = _BoundsSize / 2.0f;
+    float damping = -0.3f; // Hệ số mất năng lượng khi va chạm
+
+    if (pos.x < -halfBounds.x) { pos.x = -halfBounds.x; vel.x *= damping; }
+    if (pos.x > halfBounds.x) { pos.x = halfBounds.x; vel.x *= damping; }
+
+    if (pos.y < -halfBounds.y) { pos.y = -halfBounds.y; vel.y *= damping; }
+    if (pos.y > halfBounds.y) { pos.y = halfBounds.y; vel.y *= damping; }
+
+    if (pos.z < -halfBounds.z) { pos.z = -halfBounds.z; vel.z *= damping; }
+    if (pos.z > halfBounds.z) { pos.z = halfBounds.z; vel.z *= damping; }
+
+    // Lưu lại buffer
+    _Particles[id.x].position = pos;
+    _Particles[id.x].velocity = vel;
+}
