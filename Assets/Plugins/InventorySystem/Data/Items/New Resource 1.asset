@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 03b83e7dfb8d99b40b0c5557b1b9978c, type: 3}
+  m_Name: New Resource 1
+  m_EditorClassIdentifier: 
+  _itemID: 4aabd67c349c4fa38979b4cf6c23fbf9
+  _itemName: New Item
+  _description: 
+  _icon: {fileID: 0}
+  _worldPrefab: {fileID: 0}
+  _previewPrefab: {fileID: 0}
+  _category: 99
+  _rarity: 0
+  _weight: 0
+  _baseValue: 1
+  _isStackable: 1
+  _maxStackSize: 99
+  _shape:
+    _cells:
+    - X: 0
+      Y: 0
+  _isQuestItem: 0
+  _isBoundOnPickup: 0
+  _isUntradeable: 0
+  _consumedOnUse: 0
+  _resourceTag: Log
+  _tier: 1
